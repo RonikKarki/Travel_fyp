@@ -205,10 +205,6 @@ class KhaltiInitiateView(APIView):
         try:
             user = request.user
             data = request.data
-            
-            # Log the incoming request data
-            print("Incoming request data:", data)
-            
             amount = data.get("amount")
             purchase_order_id = data.get("purchase_order_id")
             purchase_order_name = data.get("purchase_order_name")
@@ -223,12 +219,12 @@ class KhaltiInitiateView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # Khalti API configuration
-            KHALTI_API_URL = "https://khalti.com/api/v2/epayment/initiate/"
-            KHALTI_PUBLIC_KEY = "458afad41fab42cf90f257fcc58dad1e"  # Using public key
+            # SANDBOX ENDPOINT!
+            KHALTI_API_URL = "https://dev.khalti.com/api/v2/epayment/initiate/"
+            KHALTI_SECRET_KEY = "926dcc917dbe4c48a130432b1908ae25"  # Your sandbox secret key
 
             headers = {
-                "Authorization": f"Key {KHALTI_PUBLIC_KEY}",  # Using Key format with public key
+                "Authorization": f"Key {KHALTI_SECRET_KEY}",
                 "Content-Type": "application/json"
             }
 
@@ -240,72 +236,26 @@ class KhaltiInitiateView(APIView):
                 "purchase_order_name": purchase_order_name
             }
 
-            # Log the complete request details
-            print("Full request details:")
-            print(f"URL: {KHALTI_API_URL}")
-            print(f"Headers: {headers}")
-            print(f"Payload: {payload}")
-            
             response = requests.post(
                 KHALTI_API_URL,
                 json=payload,
                 headers=headers,
                 timeout=10
             )
-            
-            # Log the complete response
-            print(f"Response Status Code: {response.status_code}")
-            print(f"Response Headers: {dict(response.headers)}")
-            print(f"Response Body: {response.text}")
-            
-            if response.status_code == 401:
-                error_detail = response.json().get('detail', 'Unknown error')
-                return Response(
-                    {
-                        "error": "Authentication failed",
-                        "detail": error_detail,
-                        "headers_sent": headers,
-                        "url": KHALTI_API_URL
-                    },
-                    status=status.HTTP_401_UNAUTHORIZED
-                )
-            
-            response.raise_for_status()
-            
-            if response.ok:
-                # Create a booking record with pending status
-                booking = Booking.objects.create(
-                    user=user,
-                    total_price=int(amount) / 100,  # Convert paisa to rupees
-                    status='pending',
-                    payment_id=purchase_order_id
-                )
 
-            return Response(response.json())
-            
-        except requests.exceptions.RequestException as e:
-            error_response = getattr(e.response, 'text', 'No response text')
-            print(f"Request Exception: {str(e)}")
-            print(f"Error Response: {error_response}")
-            return Response(
-                {
-                    "error": "Failed to initiate payment with Khalti",
-                    "detail": str(e),
-                    "response": error_response
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            if response.status_code != 200:
+                return Response(response.json(), status=response.status_code)
+
+            data = response.json()
+            payment_url = data.get("payment_url")
+            if not payment_url:
+                return Response({"error": "Payment URL not received from Khalti"}, status=400)
+
+            return Response({"payment_url": payment_url})
+
         except Exception as e:
-            print(f"Unexpected error: {str(e)}")
-            print(f"Error type: {type(e)}")
-            import traceback
-            print(f"Traceback: {traceback.format_exc()}")
             return Response(
-                {
-                    "error": "An unexpected error occurred",
-                    "detail": str(e),
-                    "type": str(type(e))
-                },
+                {"error": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -321,13 +271,13 @@ class KhaltiVerifyView(APIView):
             )
 
         headers = {
-            "Authorization": "Key 926dcc917dbe4c48a130432b1908ae25",  # Your secret key
+            "Authorization": "Key 926dcc917dbe4c48a130432b1908ae25",  # Your sandbox secret key
             "Content-Type": "application/json"
         }
 
         try:
             response = requests.post(
-                "https://khalti.com/api/v2/epayment/lookup/",  # Changed to production URL
+                "https://dev.khalti.com/api/v2/epayment/lookup/",  # SANDBOX URL
                 json={"pidx": pidx},
                 headers=headers
             )
